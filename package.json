@@ -1,0 +1,28 @@
+{
+  "name": "v4-clipper",
+  "version": "1.0.0",
+  "description": "Production-quality free AI video clipping platform following Apple design system",
+  "private": true,
+  "scripts": {
+    "start": "bash start.sh",
+    "dev": "bash start.sh",
+    "backend": "node backend/index.js",
+    "frontend": "npm run dev --prefix frontend",
+    "build:frontend": "npm run build --prefix frontend",
+    "test": "cd backend && npm test",
+    "verify:e2e": "cd backend && node verify_live_e2e.js",
+    "lint:frontend": "npm run lint --prefix frontend"
+  },
+  "keywords": [
+    "ai",
+    "video-editor",
+    "clipping",
+    "shorts",
+    "reels",
+    "tiktok",
+    "whisper",
+    "ffmpeg"
+  ],
+  "author": "",
+  "license": "MIT"
+}

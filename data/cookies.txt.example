@@ -1,0 +1,15 @@
+# Netscape HTTP Cookie File
+# This is an example cookies file for V4 Clipper.
+#
+# If YouTube requests "Sign in to confirm you're not a bot" or restricts access:
+# 1. Log into your Google / YouTube account in your desktop or mobile browser.
+# 2. Export cookies using a browser extension (such as "Get cookies.txt LOCALLY" or "Cookie-Editor").
+# 3. Export in Netscape format and save as:
+#    ~/v4-clipper/data/cookies.txt
+#
+# Ensure permissions are restricted (e.g., chmod 600 data/cookies.txt).
+# V4 Clipper will automatically load this file to authenticate yt-dlp requests.
+#
+# Example format:
+# .youtube.com	TRUE	/	TRUE	1735689600	LOGIN_INFO	AFmmF2swRQIh...
+# .youtube.com	TRUE	/	TRUE	1735689600	SAPISID	abcdef123456...
