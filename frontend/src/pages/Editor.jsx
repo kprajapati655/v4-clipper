@@ -83,6 +83,12 @@ const Editor = () => {
     setClipSegments(clip.segments || []);
     setExportResult(clip.export || null);
 
+    if (clip.subtitleStyle) setSubtitleStyle(clip.subtitleStyle);
+    if (clip.customFontSize) setCustomFontSize(clip.customFontSize);
+    if (clip.customFontColor) setCustomFontColor(clip.customFontColor);
+    if (clip.customAlignment) setCustomAlignment(clip.customAlignment);
+    if (clip.burnSubtitles !== undefined) setBurnSubtitles(clip.burnSubtitles);
+
     const isClipPreTrimmed = !project?.videoUrl && Boolean(clip.export?.fileUrl);
     if (videoRef.current) {
       videoRef.current.currentTime = isClipPreTrimmed ? 0 : clip.start;
@@ -170,16 +176,59 @@ const Editor = () => {
     }
   };
 
-  const saveClipChanges = async (title, start, end, segments) => {
+  const SUBTITLE_PRESETS = {
+    clean_white: {
+      style: 'clean_white',
+      color: '#FFFFFF',
+      fontSize: 19,
+      alignment: 'bottom'
+    },
+    highlighted: {
+      style: 'highlighted',
+      color: '#FF9F0A',
+      fontSize: 20,
+      alignment: 'bottom'
+    },
+    minimal: {
+      style: 'minimal',
+      color: '#F5F5F7',
+      fontSize: 16,
+      alignment: 'bottom'
+    },
+    bold_creator: {
+      style: 'bold_creator',
+      color: '#FFE600',
+      fontSize: 24,
+      alignment: 'bottom'
+    }
+  };
+
+  const handleSelectPreset = (presetKey) => {
+    const preset = SUBTITLE_PRESETS[presetKey];
+    if (!preset) return;
+    setSubtitleStyle(preset.style);
+    setCustomFontColor(preset.color);
+    setCustomFontSize(preset.fontSize);
+    setCustomAlignment(preset.alignment);
+  };
+
+  const saveClipChanges = async (title, start, end, segments, extra = {}) => {
     if (!activeClip) return;
     setIsSavingClip(true);
     try {
-      const response = await axios.put(`${API_BASE}/projects/${projectId}/clips/${activeClip.id}`, {
+      const payload = {
         title,
         start,
         end,
-        segments
-      });
+        segments,
+        subtitleStyle: extra.subtitleStyle !== undefined ? extra.subtitleStyle : subtitleStyle,
+        customFontSize: extra.customFontSize !== undefined ? extra.customFontSize : customFontSize,
+        customFontColor: extra.customFontColor !== undefined ? extra.customFontColor : customFontColor,
+        customAlignment: extra.customAlignment !== undefined ? extra.customAlignment : customAlignment,
+        burnSubtitles: extra.burnSubtitles !== undefined ? extra.burnSubtitles : burnSubtitles
+      };
+
+      const response = await axios.put(`${API_BASE}/projects/${projectId}/clips/${activeClip.id}`, payload);
 
       setProject(prev => ({
         ...prev,
@@ -194,7 +243,17 @@ const Editor = () => {
 
   const handleSubtitleTextChange = (index, newText) => {
     const updated = [...clipSegments];
-    updated[index] = { ...updated[index], text: newText };
+    const seg = updated[index];
+    const tokens = newText.trim().split(/\s+/).filter(Boolean);
+    const start = parseFloat(seg.start) || 0;
+    const end = Math.max(start + 0.1, parseFloat(seg.end) || (start + 1));
+    const dur = Math.max(0.05, (end - start) / Math.max(1, tokens.length));
+    const words = tokens.map((tok, i) => ({
+      word: tok,
+      start: Math.round((start + i * dur) * 1000) / 1000,
+      end: Math.round((start + (i + 1) * dur) * 1000) / 1000
+    }));
+    updated[index] = { ...seg, text: newText, words };
     setClipSegments(updated);
   };
 
@@ -216,7 +275,8 @@ const Editor = () => {
         cropPosition,
         customFontSize,
         customFontColor,
-        customAlignment
+        customAlignment,
+        segments: clipSegments
       });
 
       setExportResult(response.data.export);
@@ -224,7 +284,16 @@ const Editor = () => {
 
       setProject(prev => ({
         ...prev,
-        clips: prev.clips.map(c => c.id === activeClip.id ? { ...c, export: response.data.export } : c)
+        clips: prev.clips.map(c => c.id === activeClip.id ? {
+          ...c,
+          segments: clipSegments,
+          subtitleStyle,
+          customFontSize,
+          customFontColor,
+          customAlignment,
+          burnSubtitles,
+          export: response.data.export
+        } : c)
       }));
     } catch (err) {
       console.error('Export failed:', err);
@@ -268,17 +337,21 @@ const Editor = () => {
     // Collect all words from segments
     const allWords = [];
     for (const seg of clipSegments) {
-      if (Array.isArray(seg.words) && seg.words.length > 0) {
-        allWords.push(...seg.words);
+      const segText = (seg.text || '').trim();
+      const segWords = Array.isArray(seg.words) ? seg.words : [];
+      const joinedWords = segWords.map(w => w.word).join(' ').trim();
+
+      if (segWords.length > 0 && (!segText || joinedWords === segText)) {
+        allWords.push(...segWords);
       } else {
-        const tokens = (seg.text || '').trim().split(/\s+/).filter(Boolean);
+        const tokens = segText.split(/\s+/).filter(Boolean);
         const start = parseFloat(seg.start) || 0;
-        const dur = Math.max(0.1, ((parseFloat(seg.end) || start + 1) - start) / Math.max(1, tokens.length));
+        const dur = Math.max(0.05, ((parseFloat(seg.end) || start + 1) - start) / Math.max(1, tokens.length));
         tokens.forEach((tok, idx) => {
           allWords.push({
             word: tok,
-            start: start + idx * dur,
-            end: start + (idx + 1) * dur
+            start: Math.round((start + idx * dur) * 1000) / 1000,
+            end: Math.round((start + (idx + 1) * dur) * 1000) / 1000
           });
         });
       }
@@ -312,8 +385,27 @@ const Editor = () => {
         };
       }
     }
+
+    // Fallback when paused so subtitle editor preview remains visible
+    if (!isPlaying && chunks.length > 0) {
+      let nearest = chunks[0];
+      let minDiff = Infinity;
+      for (const chunk of chunks) {
+        const mid = (chunk[0].start + chunk[chunk.length - 1].end) / 2;
+        const diff = Math.abs(currentTime - mid);
+        if (diff < minDiff) {
+          minDiff = diff;
+          nearest = chunk;
+        }
+      }
+      return {
+        words: nearest,
+        activeWordIndex: 0
+      };
+    }
+
     return null;
-  }, [clipSegments, currentTime]);
+  }, [clipSegments, currentTime, isPlaying]);
 
   const getSubtitleOverlayClass = () => {
     return `subtitle-overlay style-${subtitleStyle} align-${customAlignment}`;
@@ -393,13 +485,12 @@ const Editor = () => {
                 </div>
               )}
 
-              {/* Live Rendered 2-Word Synchronized Subtitle Overlay with Word Highlighting (Only on raw unburned video) */}
-              {burnSubtitles && !isPreTrimmedVideo && currentChunk && (
+              {/* Live Rendered 2-Word Synchronized Subtitle Overlay with Word Highlighting */}
+              {burnSubtitles && currentChunk && (
                 <div
                   className={getSubtitleOverlayClass()}
                   style={{
-                    fontSize: `${Math.min(customFontSize, 24)}px`,
-                    color: customFontColor
+                    fontSize: `${customFontSize}px`
                   }}
                 >
                   <span className="two-word-subtitle">
@@ -407,6 +498,7 @@ const Editor = () => {
                       <span
                         key={idx}
                         className={`sub-word ${idx === currentChunk.activeWordIndex ? 'active-word' : 'inactive-word'}`}
+                        style={idx === currentChunk.activeWordIndex ? { color: customFontColor } : {}}
                       >
                         {w.word}{' '}
                       </span>
@@ -698,7 +790,7 @@ const Editor = () => {
               <div className="subtitle-styles-grid">
                 <div
                   className={`style-card ${subtitleStyle === 'clean_white' ? 'active' : ''}`}
-                  onClick={() => setSubtitleStyle('clean_white')}
+                  onClick={() => handleSelectPreset('clean_white')}
                 >
                   <div className="style-preview clean_white">White Clean</div>
                   <span>Clean White</span>
@@ -706,7 +798,7 @@ const Editor = () => {
 
                 <div
                   className={`style-card ${subtitleStyle === 'highlighted' ? 'active' : ''}`}
-                  onClick={() => setSubtitleStyle('highlighted')}
+                  onClick={() => handleSelectPreset('highlighted')}
                 >
                   <div className="style-preview highlighted">Amber Accent</div>
                   <span>Highlighted</span>
@@ -714,7 +806,7 @@ const Editor = () => {
 
                 <div
                   className={`style-card ${subtitleStyle === 'minimal' ? 'active' : ''}`}
-                  onClick={() => setSubtitleStyle('minimal')}
+                  onClick={() => handleSelectPreset('minimal')}
                 >
                   <div className="style-preview minimal">Professional</div>
                   <span>Minimal</span>
@@ -722,7 +814,7 @@ const Editor = () => {
 
                 <div
                   className={`style-card ${subtitleStyle === 'bold_creator' ? 'active' : ''}`}
-                  onClick={() => setSubtitleStyle('bold_creator')}
+                  onClick={() => handleSelectPreset('bold_creator')}
                 >
                   <div className="style-preview bold_creator">BOLD SHORTS</div>
                   <span>Bold Creator</span>
@@ -803,13 +895,18 @@ const Editor = () => {
                       key={idx}
                       className="transcript-segment-row"
                       onClick={() => {
-                        if (videoRef.current) videoRef.current.currentTime = seg.start;
+                        if (videoRef.current) {
+                          const targetTime = isPreTrimmedVideo ? Math.max(0, seg.start - clipStart) : seg.start;
+                          videoRef.current.currentTime = targetTime;
+                          setCurrentTime(seg.start);
+                        }
                       }}
                     >
                       <span className="seg-time">{seg.start.toFixed(1)}s</span>
                       <input
                         type="text"
                         value={seg.text}
+                        onClick={(e) => e.stopPropagation()}
                         onChange={(e) => handleSubtitleTextChange(idx, e.target.value)}
                         className="seg-input"
                       />

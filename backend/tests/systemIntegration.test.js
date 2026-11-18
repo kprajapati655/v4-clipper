@@ -452,6 +452,69 @@ async function runSystemIntegrationTests() {
     }
   });
 
+  // 17. Subtitle Editor: Presets, Custom Font Size, Colors, Alignment & Edited Text in ASS
+  test('generateWordSynchronizedAss: verifies presets, custom font size, color, alignment and edited text', () => {
+    const sampleSegments = [
+      { id: 1, start: 0.0, end: 3.0, text: 'Hello edited world' }
+    ];
+
+    // Presets
+    const assWhite = generateWordSynchronizedAss(sampleSegments, 0, { subtitleStyle: 'clean_white' });
+    assert.ok(assWhite.includes('&H00FFFFFF'));
+
+    const assAmber = generateWordSynchronizedAss(sampleSegments, 0, { subtitleStyle: 'highlighted' });
+    assert.ok(assAmber.includes('&H001B79FF'));
+
+    const assBold = generateWordSynchronizedAss(sampleSegments, 0, { subtitleStyle: 'bold_creator' });
+    assert.ok(assBold.includes('&H0000E5FF'));
+
+    const assMinimal = generateWordSynchronizedAss(sampleSegments, 0, { subtitleStyle: 'minimal' });
+    assert.ok(assMinimal.includes('&H00F5F5F5'));
+
+    // Custom Font Color Override (Cyan #00F0FF -> &H00FFF000 in BGR)
+    const assCyan = generateWordSynchronizedAss(sampleSegments, 0, { customFontColor: '#00F0FF' });
+    assert.ok(assCyan.includes('&H00FFF000'));
+
+    // Custom Font Size
+    const assSmall = generateWordSynchronizedAss(sampleSegments, 0, { customFontSize: 14 });
+    const assLarge = generateWordSynchronizedAss(sampleSegments, 0, { customFontSize: 28 });
+    const matchSmall = assSmall.match(/Style: V4Sub,DejaVu Sans,(\d+),/);
+    const matchLarge = assLarge.match(/Style: V4Sub,DejaVu Sans,(\d+),/);
+    assert.ok(matchSmall && matchLarge);
+    assert.ok(parseInt(matchLarge[1], 10) > parseInt(matchSmall[1], 10));
+
+    // Alignment: bottom (2), middle (5), top (8)
+    const assBottom = generateWordSynchronizedAss(sampleSegments, 0, { customAlignment: 'bottom' });
+    assert.ok(assBottom.includes(',1,2.2,0,2,40,40,'));
+
+    const assMiddle = generateWordSynchronizedAss(sampleSegments, 0, { customAlignment: 'middle' });
+    assert.ok(assMiddle.includes(',1,2.2,0,5,40,40,0,1'));
+
+    const assTop = generateWordSynchronizedAss(sampleSegments, 0, { customAlignment: 'top' });
+    assert.ok(assTop.includes(',1,2.2,0,8,40,40,'));
+
+    // Edited segment text: stale words must be replaced with words from edited text
+    const editedSegmentWithStaleWords = [
+      {
+        id: 1,
+        start: 0.0,
+        end: 3.0,
+        text: 'Brand new edited subtitle',
+        words: [
+          { word: 'Old', start: 0.0, end: 1.0 },
+          { word: 'Stale', start: 1.0, end: 2.0 },
+          { word: 'Text', start: 2.0, end: 3.0 }
+        ]
+      }
+    ];
+
+    const assEdited = generateWordSynchronizedAss(editedSegmentWithStaleWords, 0);
+    assert.ok(assEdited.includes('Brand'));
+    assert.ok(assEdited.includes('edited'));
+    assert.ok(assEdited.includes('subtitle'));
+    assert.ok(!assEdited.includes('Stale'));
+  });
+
   console.log('\n=============================================');
   console.log(` SYSTEM INTEGRATION TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
   console.log('=============================================\n');

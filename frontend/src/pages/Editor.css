@@ -182,15 +182,20 @@
 /* Subtitle Position */
 .subtitle-overlay.align-bottom {
   bottom: 40px;
+  top: auto;
+  transform: none;
 }
 
 .subtitle-overlay.align-middle {
   top: 50%;
+  bottom: auto;
   transform: translateY(-50%);
 }
 
 .subtitle-overlay.align-top {
   top: 40px;
+  bottom: auto;
+  transform: none;
 }
 
 /* Subtitle Styles */
@@ -208,23 +213,23 @@
 }
 
 .sub-word.active-word {
-  color: #FFFFFF !important;
+  color: #FFFFFF;
   font-weight: 800;
   text-shadow: 0 0 10px rgba(255, 255, 255, 0.4);
 }
 
 .subtitle-overlay.style-highlighted .sub-word.active-word {
-  color: #FF791B !important;
+  color: #FF791B;
   text-shadow: 0 0 12px rgba(255, 121, 27, 0.5);
 }
 
 .subtitle-overlay.style-bold_creator .sub-word.active-word {
-  color: #FFE600 !important;
+  color: #FFE600;
   text-shadow: 0 0 12px rgba(255, 230, 0, 0.5);
 }
 
 .sub-word.inactive-word {
-  color: rgba(220, 220, 225, 0.65) !important;
+  color: rgba(220, 220, 225, 0.65);
   font-weight: 600;
 }
 

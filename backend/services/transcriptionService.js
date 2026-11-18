@@ -187,11 +187,14 @@ async function transcribeWithLocalWhisper(audioPath) {
  * Weights word duration by syllable/character complexity and punctuation pauses.
  */
 function alignWordsInSegment(segment) {
+  const text = (segment.text || '').trim();
   if (Array.isArray(segment.words) && segment.words.length > 0) {
-    return segment.words;
+    const joinedWords = segment.words.map(w => w.word).join(' ').trim();
+    if (!text || joinedWords === text) {
+      return segment.words;
+    }
   }
 
-  const text = (segment.text || '').trim();
   if (!text) return [];
 
   const rawTokens = text.split(/\s+/).filter(Boolean);
@@ -455,12 +458,21 @@ function extractWordList(segmentsOrWords) {
         end: parseFloat(item.end) || (parseFloat(item.start) + 0.1)
       });
     } else if (Array.isArray(item.words) && item.words.length > 0) {
-      for (const w of item.words) {
-        words.push({
-          word: String(w.word).trim(),
-          start: parseFloat(w.start) || 0,
-          end: parseFloat(w.end) || (parseFloat(w.start) + 0.1)
-        });
+      const itemText = (item.text || '').trim();
+      const joinedWords = item.words.map(w => w.word).join(' ').trim();
+      if (itemText && joinedWords && itemText !== joinedWords) {
+        const aligned = alignWordsInSegment(item);
+        for (const w of aligned) {
+          words.push(w);
+        }
+      } else {
+        for (const w of item.words) {
+          words.push({
+            word: String(w.word).trim(),
+            start: parseFloat(w.start) || 0,
+            end: parseFloat(w.end) || (parseFloat(w.start) + 0.1)
+          });
+        }
       }
     } else if (item.text) {
       const aligned = alignWordsInSegment(item);
@@ -573,6 +585,18 @@ function wordsToTwoWordSrt(segmentsOrWords, offsetStart = 0) {
   return segmentsToSrt(chunks, 0, { twoWordSync: false });
 }
 
+function hexToBgr(hex) {
+  if (typeof hex !== 'string') return '&H00FFFFFF';
+  const clean = hex.replace('#', '').trim();
+  if (/^[0-9A-Fa-f]{6}$/.test(clean)) {
+    const r = clean.slice(0, 2);
+    const g = clean.slice(2, 4);
+    const b = clean.slice(4, 6);
+    return `&H00${b}${g}${r}`.toUpperCase();
+  }
+  return '&H00FFFFFF';
+}
+
 /**
  * Generates ASS (Advanced SubStation Alpha) script content for pixel-perfect word-synchronized subtitles.
  * Features:
@@ -586,10 +610,11 @@ function generateWordSynchronizedAss(segmentsOrWords, offsetStart = 0, options =
   const [resW, resH] = resolution.split('x').map(Number);
   const style = options.subtitleStyle || 'clean_white';
 
-  // Sizing and positioning parameters calculated for 9:16 safe vertical area
-  // Safe zone: lower third, centered, above bottom UI (~15-18% above bottom)
-  let fontSize = Math.round(resH * 0.022); // ~28px at 1280h, ~42px at 1920h
-  let marginV = Math.round(resH * 0.145);  // ~185px at 1280h (safe from bottom UI, well below face)
+  // Base font size scaling proportional to resolution height and slider (baseline 19px at 1280h)
+  const defaultSizePx = 19;
+  const requestedSize = parseInt(options.customFontSize, 10) || defaultSizePx;
+  let fontSize = Math.round((requestedSize / defaultSizePx) * (resH * 0.024));
+
   let activeColor = '&H00FFFFFF';
   let inactiveColor = '&H009E9E9E';
   let outlineColor = '&H00151515';
@@ -629,14 +654,21 @@ function generateWordSynchronizedAss(segmentsOrWords, offsetStart = 0, options =
       break;
   }
 
-  // Custom overrides
-  if (options.customFontSize) {
-    fontSize = parseInt(options.customFontSize, 10) || fontSize;
+  // Custom font color override
+  if (options.customFontColor) {
+    activeColor = hexToBgr(options.customFontColor);
   }
+
+  // Alignment and vertical margin positioning
+  let alignment = 2; // Bottom-Center
+  let marginV = Math.round(resH * 0.145); // Safe zone above bottom UI (~185px at 1280h)
+
   if (options.customAlignment === 'middle') {
-    marginV = Math.round(resH * 0.45);
+    alignment = 5; // Middle-Center
+    marginV = 0;
   } else if (options.customAlignment === 'top') {
-    marginV = Math.round(resH * 0.78);
+    alignment = 8; // Top-Center
+    marginV = Math.round(resH * 0.09); // Safe zone below top (~115px at 1280h)
   }
 
   const chunks = generateTwoWordChunks(segmentsOrWords, offsetStart);
@@ -649,7 +681,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: V4Sub,DejaVu Sans,${fontSize},${activeColor},&H00000000,${outlineColor},&H80000000,${bold},0,0,0,100,100,0,0,1,${outlineWidth},0,2,40,40,${marginV},1
+Style: V4Sub,DejaVu Sans,${fontSize},${activeColor},&H00000000,${outlineColor},&H80000000,${bold},0,0,0,100,100,0,0,1,${outlineWidth},0,${alignment},40,40,${marginV},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -718,5 +750,6 @@ module.exports = {
   wordsToTwoWordSrt,
   formatSrtTimestamp,
   formatAssTimestamp,
-  parseSubtitleContent
+  parseSubtitleContent,
+  hexToBgr
 };

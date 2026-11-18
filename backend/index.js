@@ -10,7 +10,7 @@ const util = require('util');
 const execFilePromise = util.promisify(execFile);
 
 const { extractMetadata } = require('./services/metadataService');
-const { extractAudio, transcribeAudio } = require('./services/transcriptionService');
+const { extractAudio, transcribeAudio, alignWordsInSegment } = require('./services/transcriptionService');
 const { analyzeTranscript, analyzeLiveHighlight } = require('./services/analysisService');
 const { renderClip } = require('./services/videoProcessingService');
 const {
@@ -990,7 +990,26 @@ app.put('/api/projects/:id/clips/:clipId', (req, res) => {
   if (targetClip.start !== undefined && targetClip.end !== undefined) {
     targetClip.duration = Math.round((targetClip.end - targetClip.start) * 100) / 100;
   }
-  if (updatedData.segments !== undefined) targetClip.segments = updatedData.segments;
+  if (updatedData.segments !== undefined && Array.isArray(updatedData.segments)) {
+    targetClip.segments = updatedData.segments.map(seg => {
+      const text = (seg.text || '').trim();
+      const segWords = Array.isArray(seg.words) ? seg.words : [];
+      const joinedWords = segWords.map(w => w.word).join(' ').trim();
+      if (segWords.length === 0 || joinedWords !== text) {
+        return {
+          ...seg,
+          text,
+          words: alignWordsInSegment({ start: seg.start, end: seg.end, text })
+        };
+      }
+      return seg;
+    });
+  }
+  if (updatedData.subtitleStyle !== undefined) targetClip.subtitleStyle = updatedData.subtitleStyle;
+  if (updatedData.customFontSize !== undefined) targetClip.customFontSize = updatedData.customFontSize;
+  if (updatedData.customFontColor !== undefined) targetClip.customFontColor = updatedData.customFontColor;
+  if (updatedData.customAlignment !== undefined) targetClip.customAlignment = updatedData.customAlignment;
+  if (updatedData.burnSubtitles !== undefined) targetClip.burnSubtitles = Boolean(updatedData.burnSubtitles);
 
   project.clips[clipIndex] = targetClip;
   fs.writeFileSync(projectPath, JSON.stringify(project, null, 2));
@@ -1015,6 +1034,26 @@ app.post('/api/projects/:id/clips/:clipId/export', async (req, res) => {
   }
 
   const options = req.body || {};
+  if (options.segments && Array.isArray(options.segments)) {
+    clip.segments = options.segments.map(seg => {
+      const text = (seg.text || '').trim();
+      const segWords = Array.isArray(seg.words) ? seg.words : [];
+      const joinedWords = segWords.map(w => w.word).join(' ').trim();
+      if (segWords.length === 0 || joinedWords !== text) {
+        return {
+          ...seg,
+          text,
+          words: alignWordsInSegment({ start: seg.start, end: seg.end, text })
+        };
+      }
+      return seg;
+    });
+  }
+  if (options.subtitleStyle !== undefined) clip.subtitleStyle = options.subtitleStyle;
+  if (options.customFontSize !== undefined) clip.customFontSize = options.customFontSize;
+  if (options.customFontColor !== undefined) clip.customFontColor = options.customFontColor;
+  if (options.customAlignment !== undefined) clip.customAlignment = options.customAlignment;
+  if (options.burnSubtitles !== undefined) clip.burnSubtitles = Boolean(options.burnSubtitles);
   let tempSegmentPath = null;
   let videoPath = null;
   let isPreTrimmed = false;

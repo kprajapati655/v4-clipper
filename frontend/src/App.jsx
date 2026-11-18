@@ -46,7 +46,7 @@ function App() {
               <p>Professional Open-Source AI Video Clipping Platform. 100% Free.</p>
             </div>
             <div className="footer-bottom">
-              <p>&copy; {new Date().getFullYear()} V4 Clipper. Engineered with Apple Design Guidelines.</p>
+              <p>Built from ideas, driven by ambition, and made to turn vision into reality.</p>
             </div>
           </div>
         </footer>
